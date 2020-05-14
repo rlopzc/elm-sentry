@@ -2,6 +2,7 @@ module Sentry exposing
     ( Config
     , Context
     , Environment
+    , Level(..)
     , ProjectId
     , PublicKey
     , ReleaseVersion
@@ -12,15 +13,19 @@ module Sentry exposing
     , publicKey
     , releaseVersion
     , scope
+    , send
+    , withContext
     )
 
 import Dict exposing (Dict)
 import Http
 import Json.Encode as Encode
 import Process
+import Random
 import Sentry.Internal as Internal
 import Task exposing (Task)
 import Time
+import UUID exposing (UUID)
 
 
 
@@ -44,11 +49,11 @@ import Time
 
 
 type alias Sentry =
-    { fatal : String -> Dict String Encode.Value -> Task Http.Error String
-    , error : String -> Dict String Encode.Value -> Task Http.Error String
-    , warning : String -> Dict String Encode.Value -> Task Http.Error String
-    , info : String -> Dict String Encode.Value -> Task Http.Error String
-    , debug : String -> Dict String Encode.Value -> Task Http.Error String
+    { fatal : String -> Dict String Encode.Value -> Task Http.Error UUID
+    , error : String -> Dict String Encode.Value -> Task Http.Error UUID
+    , warning : String -> Dict String Encode.Value -> Task Http.Error UUID
+    , info : String -> Dict String Encode.Value -> Task Http.Error UUID
+    , debug : String -> Dict String Encode.Value -> Task Http.Error UUID
     }
 
 
@@ -150,18 +155,35 @@ config conf =
     Config conf.publicKey conf.projectId
 
 
-send : Config -> Level -> ReleaseVersion -> Environment -> Context -> String -> Dict String Encode.Value -> Task Http.Error String
+withContext : Config -> ReleaseVersion -> Environment -> String -> Sentry
+withContext vconfig vreleaseVersion venvironment contextStr =
+    let
+        vcontext =
+            Context contextStr
+    in
+    { fatal = send vconfig Fatal vreleaseVersion venvironment vcontext
+    , error = send vconfig Error vreleaseVersion venvironment vcontext
+    , warning = send vconfig Warning vreleaseVersion venvironment vcontext
+    , info = send vconfig Info vreleaseVersion venvironment vcontext
+    , debug = send vconfig Debug vreleaseVersion venvironment vcontext
+    }
+
+
+send : Config -> Level -> ReleaseVersion -> Environment -> Context -> String -> Dict String Encode.Value -> Task Http.Error UUID
 send vconfig level vreleaseVersion venvironment vcontext message metadata =
     Time.now
         |> Task.andThen (sendWithTime vconfig level vreleaseVersion venvironment vcontext message metadata)
 
 
-sendWithTime : Config -> Level -> ReleaseVersion -> Environment -> Context -> String -> Dict String Encode.Value -> Time.Posix -> Task Http.Error String
+sendWithTime : Config -> Level -> ReleaseVersion -> Environment -> Context -> String -> Dict String Encode.Value -> Time.Posix -> Task Http.Error UUID
 sendWithTime (Config vpublicKey vprojectId) level vreleaseVersion venvironment vcontext message metadata posix =
     let
-        uuid : String
+        uuid : UUID
         uuid =
-            "uuid"
+            posixToSeconds posix
+                |> Random.initialSeed
+                |> Random.step UUID.generator
+                |> Tuple.first
 
         body : Http.Body
         body =
@@ -204,10 +226,10 @@ withRetry maxRetryAttempts task =
     Task.onError retry task
 
 
-toJsonBody : String -> Time.Posix -> Level -> ReleaseVersion -> Environment -> Context -> String -> Dict String Encode.Value -> Http.Body
+toJsonBody : UUID -> Time.Posix -> Level -> ReleaseVersion -> Environment -> Context -> String -> Dict String Encode.Value -> Http.Body
 toJsonBody uuid posix level (ReleaseVersion vreleaseVersion) (Environment venvironment) (Context vcontext) message metadata =
-    [ ( "event_id", Encode.string uuid )
-    , ( "timestamp", Encode.int <| posixToSeconds posix )
+    [ ( "event_id", Encode.string (uuidRemoveDashes uuid) )
+    , ( "timestamp", Encode.int (posixToSeconds posix) )
     , ( "plaform", Encode.string "elm" )
     , ( "level", Encode.string (levelToString level) )
     , ( "release", Encode.string vreleaseVersion )
@@ -221,6 +243,11 @@ toJsonBody uuid posix level (ReleaseVersion vreleaseVersion) (Environment venvir
     ]
         |> Encode.object
         |> Http.jsonBody
+
+
+uuidRemoveDashes : UUID -> String
+uuidRemoveDashes =
+    UUID.toString >> String.replace "-" ""
 
 
 
