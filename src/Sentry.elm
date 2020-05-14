@@ -45,7 +45,6 @@ import UUID exposing (UUID)
        - tags:
           - context: Can be the page name
 -}
--- TODO: Use UUID instead of String?
 
 
 type alias Sentry =
@@ -115,8 +114,8 @@ type Context
     = Context String
 
 
-scope : String -> Context
-scope =
+context : String -> Context
+context =
     Context
 
 
@@ -128,18 +127,8 @@ type PublicKey
     = PublicKey String
 
 
-publicKey : String -> PublicKey
-publicKey =
-    PublicKey
-
-
 type ProjectId
     = ProjectId String
-
-
-projectId : String -> ProjectId
-projectId =
-    ProjectId
 
 
 type Config
@@ -147,12 +136,12 @@ type Config
 
 
 config :
-    { publicKey : PublicKey
-    , projectId : ProjectId
+    { publicKey : String
+    , projectId : String
     }
     -> Config
 config conf =
-    Config conf.publicKey conf.projectId
+    Config (PublicKey conf.publicKey) (ProjectId conf.projectId)
 
 
 withContext : Config -> ReleaseVersion -> Environment -> String -> Sentry
