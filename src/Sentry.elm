@@ -17,6 +17,7 @@ module Sentry exposing
 import Dict exposing (Dict)
 import Http
 import Json.Encode as Encode
+import Process
 import Sentry.Internal as Internal
 import Task exposing (Task)
 import Time
@@ -149,6 +150,60 @@ config conf =
     Config conf.publicKey conf.projectId
 
 
+send : Config -> Level -> ReleaseVersion -> Environment -> Context -> String -> Dict String Encode.Value -> Task Http.Error String
+send vconfig level vreleaseVersion venvironment vcontext message metadata =
+    Time.now
+        |> Task.andThen (sendWithTime vconfig level vreleaseVersion venvironment vcontext message metadata)
+
+
+sendWithTime : Config -> Level -> ReleaseVersion -> Environment -> Context -> String -> Dict String Encode.Value -> Time.Posix -> Task Http.Error String
+sendWithTime (Config vpublicKey vprojectId) level vreleaseVersion venvironment vcontext message metadata posix =
+    let
+        uuid : String
+        uuid =
+            "uuid"
+
+        body : Http.Body
+        body =
+            toJsonBody uuid posix level vreleaseVersion venvironment vcontext message metadata
+    in
+    { method = "POST"
+    , headers = [ authHeader posix vpublicKey ]
+    , url = endpointUrl vprojectId
+    , body = body
+    , resolver = Http.stringResolver (\_ -> Ok ())
+    , timeout = Nothing
+    }
+        |> Http.task
+        |> Task.map (\() -> uuid)
+        |> withRetry retries.maxAttempts
+
+
+withRetry : Int -> Task Http.Error a -> Task Http.Error a
+withRetry maxRetryAttempts task =
+    let
+        retry : Http.Error -> Task Http.Error a
+        retry httpError =
+            if maxRetryAttempts > 0 then
+                case httpError of
+                    Http.BadStatus statusCode ->
+                        -- Retry in case we hit a rate-limit
+                        if statusCode == 429 then
+                            Process.sleep retries.msDelayBetweenRetries
+                                |> Task.andThen (\() -> withRetry (maxRetryAttempts - 1) task)
+
+                        else
+                            Task.fail httpError
+
+                    _ ->
+                        Task.fail httpError
+
+            else
+                Task.fail httpError
+    in
+    Task.onError retry task
+
+
 toJsonBody : String -> Time.Posix -> Level -> ReleaseVersion -> Environment -> Context -> String -> Dict String Encode.Value -> Http.Body
 toJsonBody uuid posix level (ReleaseVersion vreleaseVersion) (Environment venvironment) (Context vcontext) message metadata =
     [ ( "event_id", Encode.string uuid )
@@ -194,8 +249,8 @@ messageEncoder vmessage =
 -}
 
 
-authHeader : Time.Posix -> Config -> Http.Header
-authHeader posix (Config (PublicKey vpublicKey) _) =
+authHeader : Time.Posix -> PublicKey -> Http.Header
+authHeader posix (PublicKey vpublicKey) =
     Http.header "X-Sentry-Auth" <|
         ("Sentry sentry_version=" ++ sentryVersion)
             ++ (",sentry_client=elm-sentry/" ++ Internal.version)
@@ -208,9 +263,16 @@ sentryVersion =
     "7"
 
 
-endpointUrl : Config -> String
-endpointUrl (Config _ (ProjectId vprojectId)) =
+endpointUrl : ProjectId -> String
+endpointUrl (ProjectId vprojectId) =
     "https://sentry.com/api/" ++ vprojectId ++ "/store/"
+
+
+retries : { maxAttempts : Int, msDelayBetweenRetries : Float }
+retries =
+    { maxAttempts = 60
+    , msDelayBetweenRetries = 1000
+    }
 
 
 {-| Turn a Posix.Time into the number of seconds since Epoch
