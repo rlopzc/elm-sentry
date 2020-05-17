@@ -274,12 +274,30 @@ sendWithTime (Config vpublicKey vhost vprojectId) level vreleaseVersion venviron
     , headers = [ authHeader posix vpublicKey ]
     , url = endpointUrl vhost vprojectId
     , body = body
-    , resolver = Http.stringResolver (\_ -> Ok ())
+    , resolver = Http.stringResolver (httpResolver uuid)
     , timeout = Nothing
     }
         |> Http.task
-        |> Task.map (\() -> uuid)
         |> withRetry retries.maxAttempts
+
+
+httpResolver : UUID -> Http.Response String -> Result Http.Error UUID
+httpResolver uuid response =
+    case response of
+        Http.BadUrl_ url ->
+            Err (Http.BadUrl url)
+
+        Http.Timeout_ ->
+            Err Http.Timeout
+
+        Http.NetworkError_ ->
+            Err Http.NetworkError
+
+        Http.BadStatus_ metadata _ ->
+            Err (Http.BadStatus metadata.statusCode)
+
+        Http.GoodStatus_ _ _ ->
+            Ok uuid
 
 
 withRetry : Int -> Task Http.Error a -> Task Http.Error a
