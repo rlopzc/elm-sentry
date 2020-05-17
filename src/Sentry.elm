@@ -331,7 +331,7 @@ toJsonBody : UUID -> Time.Posix -> Level -> ReleaseVersion -> Environment -> Con
 toJsonBody uuid posix level (ReleaseVersion vreleaseVersion) (Environment venvironment) (Context vcontext) message metadata =
     [ ( "event_id", Encode.string (UUID.toRepresentation UUID.Compact uuid) )
     , ( "timestamp", Encode.int (posixToSeconds posix) )
-    , ( "plaform", Encode.string "elm" )
+    , ( "platform", Encode.string "elm" )
     , ( "level", Encode.string (levelToString level) )
     , ( "release", Encode.string vreleaseVersion )
     , ( "environment", Encode.string venvironment )
