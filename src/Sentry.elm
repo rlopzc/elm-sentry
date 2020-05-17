@@ -161,7 +161,10 @@ type Config
 
 Use the dsn to provide the publicKey, host and projectId.
 
-    -- Example: https://1900942c246350fdacb4c9369cac2ets@o298593.ingest.sentry.io/2312456
+The @ character in the DSN separates the PublicKey and the Host.
+
+    -- DSN: https://1900942c246350fdacb4c9369cac2ets@o298593.ingest.sentry.io/2312456
+    --                      ^ PublicKey                       ^ Host           ^ ProjectId
     Sentry.config
         { publicKey = "1900942c246350fdacb4c9369cac2ets"
         , host = "o298593.ingest.sentry.io"
