@@ -1,6 +1,6 @@
 {
     "type": "package",
-    "name": "romariolopezc/elm-sentry",
+    "name": "rlopzc/elm-sentry",
     "summary": "Send reports to Sentry",
     "license": "MIT",
     "version": "1.0.0",
