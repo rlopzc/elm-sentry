@@ -5,7 +5,7 @@ Send errors to Sentry
 ## Install
 
 ```sh
-elm install romariolopezc/elm-sentry
+elm install rlopzc/elm-sentry
 ```
 
 ## Example
